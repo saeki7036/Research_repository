@@ -87,6 +87,7 @@ public class CBS : MonoBehaviour
         openList.Add(root); // オープンリストに初期ノードを追加
 
         int c = 0;
+        int before1 = -1, before2= -1, beforeT = -1;
 
         // オープンリストが空になるまで探索を続ける
         while (openList.Count > 0)
@@ -107,49 +108,56 @@ public class CBS : MonoBehaviour
                     Nabicount[agent] = 0;
                     AgentsNabi[agent] = new List<Vector2Int>();
                     AgentsNabi[agent] = current.Paths[agent];
-                    Debug.Log("Agent:"+ agent + "Count" + AgentsNabi[agent].Count);
+                    Debug.Log("Agent:" + agent + "Count" + AgentsNabi[agent].Count);
                 }
-                return; 
+                return;
+            }
+            else if (conflict == (-1,-1,-1))
+                continue;
+            
+            var (agent1, agent2, time) = conflict.Value;
+            bool SameBefore = !(agent1 == before1 && agent2 == before2 && time == beforeT);
+            // 衝突を解決するために新しい制約を追加し、ノードを生成
+            if (true)
+            {
+                var newConflict1 = current.Conflicts;
+
+                var newPaths1 = new Dictionary<int, List<Vector2Int>>(current.Paths);
+                var constraint1 = new Conflict(newPaths1[agent1][time], agent1);
+
+                if (!newConflict1.ContainsKey(time))
+                    newConflict1.Add(time, new List<Conflict>());
+                newConflict1[time].Add(constraint1);
+
+                newPaths1[agent1] = AStarWithConstraint(Stage_Index, agent1, newConflict1);
+
+                var newNode1 = new Node(newPaths1, newConflict1, GetScore(newPaths1, AgentsMember), current);
+
+                //newNode1.Conflicts.AddRange(current.Conflicts);
+                //newNode1.Conflicts.Add((agent1, agent2, time));
+
+                openList.Add(newNode1);
+
+                var newConflict2 = current.Conflicts;
+
+                var newPaths2 = new Dictionary<int, List<Vector2Int>>(current.Paths);
+                var constraint2 = new Conflict(newPaths2[agent2][time], agent2);
+
+                if (!newConflict2.ContainsKey(time))
+                    newConflict2[time] = new List<Conflict>();
+                newConflict2[time].Add(constraint2);
+
+                newPaths2[agent2] = AStarWithConstraint(Stage_Index, agent2, newConflict2);
+
+                var newNode2 = new Node(newPaths2, newConflict2, GetScore(newPaths2, AgentsMember), current);
+
+                //newNode2.Conflicts.AddRange(current.Conflicts);
+                //newNode2.Conflicts.Add((agent1, agent2, time));
+
+                openList.Add(newNode2);
             }
 
-            var (agent1, agent2, time) = conflict.Value;
-            // 衝突を解決するために新しい制約を追加し、ノードを生成
-
-            var newConflict1 = current.Conflicts;
-
-            var newPaths1 = new Dictionary<int, List<Vector2Int>>(current.Paths);
-            var constraint1 = new Conflict(newPaths1[agent1][time], agent1);
-
-            if(!newConflict1.ContainsKey(time))
-                newConflict1.Add(time,new List<Conflict>());
-            newConflict1[time].Add(constraint1);
-
-            newPaths1[agent1] = AStarWithConstraint(Stage_Index, agent1, newConflict1);
-
-            var newNode1 = new Node(newPaths1, newConflict1,GetScore(newPaths1, AgentsMember) ,current);
-
-            //newNode1.Conflicts.AddRange(current.Conflicts);
-            //newNode1.Conflicts.Add((agent1, agent2, time));
-
-            openList.Add(newNode1);
-
-            var newConflict2 = current.Conflicts;
-
-            var newPaths2 = new Dictionary<int, List<Vector2Int>>(current.Paths);
-            var constraint2 = new Conflict(newPaths2[agent2][time], agent2);
-
-            if (!newConflict2.ContainsKey(time))
-                newConflict2[time] = new List<Conflict>();
-            newConflict2[time].Add(constraint2);
-
-            newPaths2[agent2] = AStarWithConstraint(Stage_Index, agent2, newConflict2);
-
-            var newNode2 = new Node(newPaths2, newConflict2, GetScore(newPaths2, AgentsMember), current);
-
-            //newNode2.Conflicts.AddRange(current.Conflicts);
-            //newNode2.Conflicts.Add((agent1, agent2, time));
-
-            openList.Add(newNode2);
+            before1 = agent1; before2 = agent2; beforeT = time;
 
             c++;
             if (c == 1000)
@@ -197,9 +205,13 @@ public class CBS : MonoBehaviour
     // エージェントの経路間で最初の衝突を見つける
     private (int, int, int)? FindFirstConflict(Dictionary<int, List<Vector2Int>> paths)
     {
-       
-        // エージェントの経路をチェックして最初の衝突を探す
         foreach (var agent1 in paths.Keys)
+        {
+            if (paths[agent1] == null)
+                return (-1, -1, -1);
+        }
+            // エージェントの経路をチェックして最初の衝突を探す
+            foreach (var agent1 in paths.Keys)
         {
             for (int t = 0; t < paths[agent1].Count; t++)
             {
@@ -215,17 +227,21 @@ public class CBS : MonoBehaviour
 
                     if (paths[agent1][t] == paths[agent2][t])
                     {
-                        Debug.Log("A:" + agent1 + " B:" + agent2 + " T:" + t);
+                        Debug.Log("agentA:" + agent1 + " agentB:" + agent2 + " Time:" + t + 
+                            " PosX:" + paths[agent1][t].x + " PosY" + paths[agent1][t].y);
                         // 衝突が見つかった場合、その情報を返す
                         return (agent1, agent2, t);
                     }
                     else if(t + 1 < paths[agent2].Count)
                     {
-                        if (paths[agent1][t] == paths[agent2][t+1] && paths[agent1][t+1] == paths[agent2][t])
+                        int next = t + 1;
+                        if (paths[agent1][t] == paths[agent2][next] && paths[agent1][next] == paths[agent2][t])
                         {
-                            Debug.Log("A:"+agent1 +" B:"+agent2+" T:"+t + 1);
+                            Debug.Log("agentA:" + agent1 + " agentB:" + agent2 + " Time:" + next +
+                                " A_PosX:" + paths[agent1][next].x + " A_PosY" + paths[agent1][next].y +
+                                " B_PosX:" + paths[agent2][next].x + " B_PosY" + paths[agent2][next].y);
                             // 衝突が見つかった場合、その情報を返す
-                            return (agent1, agent2, t+1);
+                            return (agent1, agent2, next);
                         }
                     }
                 }
@@ -371,6 +387,10 @@ public class CBS : MonoBehaviour
                     useInfo = OpenList[i];
                 }
             }
+
+            if (useInfo.Pos.y == 3 || useInfo.Pos.y == 1)
+                Debug.Log("インチ");
+
             if (useInfo.Pos == GoalPos)
             {
                 List<Info> Nabigate;
@@ -389,6 +409,7 @@ public class CBS : MonoBehaviour
             PosSearchWithConstraint(useInfo, stege, menber, OpenList, CloseSaerched, GoalPos,conflicts);
 
             CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT].Saerch = true;
+            if(CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT].Cost > useInfo.TotalMoveCost)
             CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT].Cost = useInfo.TotalMoveCost;
 
             CloseList.Add(useInfo);
@@ -478,7 +499,7 @@ public class CBS : MonoBehaviour
     private void PosSearchWithConstraint(Info info, int stege, int menber,List<Info> openList,
         CloseSaerch[] closeList, Vector2Int goalPos, Dictionary<int, List<Conflict>> conflicts)
     {
-        for (int X = -1; X <= 1; X++)
+         for (int X = -1; X <= 1; X++)
             for (int Y = -1; Y <= 1; Y++)
             {
                 //if (X == 0 && Y == 0)
@@ -510,9 +531,55 @@ public class CBS : MonoBehaviour
                         if (ConstraintCheck(menber, checkPos, conflicts[totalMoveCost]))
                         {
                             Info stayInfo = new Info(info, info.Pos, totalMoveCost, goalPos);
-                            openList.Add(stayInfo);
 
-                            closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost;
+                            if (ConstraintCheck(menber, info.Pos, conflicts[totalMoveCost]) == false)                                
+                            {
+                                openList.Add(stayInfo);
+                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost;
+                            }
+                            else
+                            {
+                                Info returnInfo = new Info(info, info.Parent.Pos, totalMoveCost, goalPos);
+                                Info ParentInfo = returnInfo;
+                                
+                                while (returnInfo.Pos == info.Pos)
+                                {
+                                    if(ParentInfo.Parent == null)
+                                    {
+                                        break;
+                                    }
+                                    ParentInfo = ParentInfo.Parent;
+                                    returnInfo = new Info(info, ParentInfo.Pos, totalMoveCost, goalPos);
+                                }
+
+                                if (ParentInfo.Parent == null)
+                                    continue;
+
+                                openList.Add(returnInfo);
+
+                                closeList[returnInfo.Pos.x + returnInfo.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost + 1;
+                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost + 2;
+
+                            }
+                            /*
+                            int[] Move_X = { 0, -1, 1, 0 };
+                            int[] Move_Y = { 1, 0, 0, -1 };
+                            for (int i = 0; i < 4;i++)
+                            {
+                                Vector2Int movingPos = new Vector2Int(info.Pos.x + Move_X[i], info.Pos.y + Move_Y[i]);
+
+                                OverCheck_x = (movingPos.x >= 0 && movingPos.x < BOARD_WIDTH);
+                                OverCheck_y = (movingPos.y >= 0 && movingPos.y < BOARD_HEIGHT);
+                                if (!OverCheck_x || !OverCheck_y)
+                                    continue;
+
+                                Map_Object movingObj = mapData.GetMapData(stege, movingPos.y, movingPos.x);
+                                //壁除外
+                                if (movingObj == Map_Object.Wall)
+                                    continue;
+                                   
+                                
+                            }*/
                             continue;
                         }
 
@@ -548,6 +615,10 @@ public class CBS : MonoBehaviour
                     }
 
                     Info neighborInfo = new Info(info, checkPos, totalMoveCost, goalPos);
+
+                    if (neighborInfo.Pos.y == 3 || neighborInfo.Pos.y == 1) 
+                        Debug.Log("アンチ");
+
                     openList.Add(neighborInfo);
                 }
             }
