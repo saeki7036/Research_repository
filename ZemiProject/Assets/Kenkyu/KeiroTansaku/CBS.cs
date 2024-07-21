@@ -120,10 +120,14 @@ public class CBS : MonoBehaviour
             // 衝突を解決するために新しい制約を追加し、ノードを生成
             if (true)
             {
-                var newConflict1 = current.Conflicts;
+                var newConflict1 = new Dictionary<int, List<Conflict>>(current.Conflicts);
 
                 var newPaths1 = new Dictionary<int, List<Vector2Int>>(current.Paths);
+
                 var constraint1 = new Conflict(newPaths1[agent1][time], agent1);
+                //この場所にいなければいけない制約と、この場所にいてはいけない制約を両立する。
+
+
 
                 if (!newConflict1.ContainsKey(time))
                     newConflict1.Add(time, new List<Conflict>());
@@ -132,13 +136,14 @@ public class CBS : MonoBehaviour
                 newPaths1[agent1] = AStarWithConstraint(Stage_Index, agent1, newConflict1);
 
                 var newNode1 = new Node(newPaths1, newConflict1, GetScore(newPaths1, AgentsMember), current);
+                //ノードの生成する場所の長さが長い
 
                 //newNode1.Conflicts.AddRange(current.Conflicts);
                 //newNode1.Conflicts.Add((agent1, agent2, time));
 
                 openList.Add(newNode1);
 
-                var newConflict2 = current.Conflicts;
+                var newConflict2 = new Dictionary<int, List<Conflict>>(current.Conflicts);
 
                 var newPaths2 = new Dictionary<int, List<Vector2Int>>(current.Paths);
                 var constraint2 = new Conflict(newPaths2[agent2][time], agent2);
@@ -150,6 +155,7 @@ public class CBS : MonoBehaviour
                 newPaths2[agent2] = AStarWithConstraint(Stage_Index, agent2, newConflict2);
 
                 var newNode2 = new Node(newPaths2, newConflict2, GetScore(newPaths2, AgentsMember), current);
+                
 
                 //newNode2.Conflicts.AddRange(current.Conflicts);
                 //newNode2.Conflicts.Add((agent1, agent2, time));
@@ -160,6 +166,10 @@ public class CBS : MonoBehaviour
             before1 = agent1; before2 = agent2; beforeT = time;
 
             c++;
+            if (c == 500)
+            {
+                Debug.Log("うんこ");
+            }
             if (c == 1000)
             {
                 Debug.Log("探索失敗＼（＾o＾）／");
@@ -345,15 +355,11 @@ public class CBS : MonoBehaviour
         return new List<Vector2Int>();
     }
 
-    class CloseSaerch
+    enum CloseSaerch
     {
-        public bool Saerch;
-        public int Cost;
-        public CloseSaerch()
-        {
-            Saerch = false;
-            Cost = 10000;
-        }
+        Unconfirmed,
+        ReEntry,
+        Visited,
     }
 
 
@@ -368,7 +374,7 @@ public class CBS : MonoBehaviour
 
         CloseSaerch[] CloseSaerched = new CloseSaerch[BOARD_WIDTH * BOARD_HEIGHT];
         for(int i = 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++)
-            CloseSaerched[i] = new CloseSaerch();
+            CloseSaerched[i] = CloseSaerch.Unconfirmed;
 
         List<Info> CloseList = new List<Info>();
 
@@ -387,10 +393,7 @@ public class CBS : MonoBehaviour
                     useInfo = OpenList[i];
                 }
             }
-
-            if (useInfo.Pos.y == 3 || useInfo.Pos.y == 1)
-                Debug.Log("インチ");
-
+            
             if (useInfo.Pos == GoalPos)
             {
                 List<Info> Nabigate;
@@ -408,10 +411,15 @@ public class CBS : MonoBehaviour
 
             PosSearchWithConstraint(useInfo, stege, menber, OpenList, CloseSaerched, GoalPos,conflicts);
 
-            CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT].Saerch = true;
-            if(CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT].Cost > useInfo.TotalMoveCost)
-            CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT].Cost = useInfo.TotalMoveCost;
+            if (CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT] == CloseSaerch.ReEntry)
+            {
 
+            }
+            else if (CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT] == CloseSaerch.Unconfirmed)
+            {
+                CloseSaerched[useInfo.Pos.x + useInfo.Pos.y * BOARD_HEIGHT] = CloseSaerch.Visited;
+            }
+            
             CloseList.Add(useInfo);
         }
         Debug.Log("Agent:" + menber + "探索失敗");
@@ -535,7 +543,7 @@ public class CBS : MonoBehaviour
                             if (ConstraintCheck(menber, info.Pos, conflicts[totalMoveCost]) == false)                                
                             {
                                 openList.Add(stayInfo);
-                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost;
+                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
                             }
                             else
                             {
@@ -544,22 +552,21 @@ public class CBS : MonoBehaviour
                                 
                                 while (returnInfo.Pos == info.Pos)
                                 {
-                                    if(ParentInfo.Parent == null)
+                                    ParentInfo = ParentInfo.Parent;
+                                    if (ParentInfo == null)
                                     {
                                         break;
                                     }
-                                    ParentInfo = ParentInfo.Parent;
                                     returnInfo = new Info(info, ParentInfo.Pos, totalMoveCost, goalPos);
                                 }
 
-                                if (ParentInfo.Parent == null)
+                                if (ParentInfo == null)
                                     continue;
 
                                 openList.Add(returnInfo);
 
-                                closeList[returnInfo.Pos.x + returnInfo.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost + 1;
-                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT].Cost = totalMoveCost + 2;
-
+                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
+                                closeList[returnInfo.Pos.x + returnInfo.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
                             }
                             /*
                             int[] Move_X = { 0, -1, 1, 0 };
@@ -584,13 +591,12 @@ public class CBS : MonoBehaviour
                         }
 
                     // 既に調査済みである
-                    if (closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Saerch)
+                    if (closeList[checkPos.x + checkPos.y * BOARD_HEIGHT] == CloseSaerch.Visited)
                     {
-                        if (totalMoveCost >= closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost)
-                            continue;
-
-                        closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Saerch = false;
-                        closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost = 10000;
+                        //if (totalMoveCost >= closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost)
+                        continue;
+                        //closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Saerch = false;
+                        //closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost = 10000;
                     }
 
                     /*
@@ -607,18 +613,17 @@ public class CBS : MonoBehaviour
                     // 現在調査中である
                     if (info.GetSameInfo(openList, checkPos, out var open) == true)
                     {
-                        // トータル移動コストが既存以上なら差し替え不要
-                        if (totalMoveCost >= open.TotalMoveCost)
-                            continue;
+                        if(closeList[checkPos.x + checkPos.y * BOARD_HEIGHT] != CloseSaerch.ReEntry)
+                        {
+                            // トータル移動コストが既存以上なら差し替え不要
+                            if (totalMoveCost >= open.TotalMoveCost)
+                                continue;
 
-                        openList.Remove(open);
+                            openList.Remove(open);
+                        }     
                     }
-
+ 
                     Info neighborInfo = new Info(info, checkPos, totalMoveCost, goalPos);
-
-                    if (neighborInfo.Pos.y == 3 || neighborInfo.Pos.y == 1) 
-                        Debug.Log("アンチ");
-
                     openList.Add(neighborInfo);
                 }
             }

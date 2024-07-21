@@ -1946,7 +1946,7 @@ MonoBehaviour:
   mapData: {fileID: 11400000, guid: b7c3857fa9e162c429f42ff22418b44d, type: 2}
   _Wall: {fileID: 1961067890014530575, guid: 803f5648fe931ca4d90a27e6538d92fb, type: 3}
   _Spase: {fileID: 8223124831705149997, guid: 9660f59a013188a4198edf1fcb64959d, type: 3}
-  Stage_Index: 1
+  Stage_Index: 2
 --- !u!4 &848123559
 Transform:
   m_ObjectHideFlags: 0
