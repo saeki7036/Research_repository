@@ -1,8 +1,12 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Analytics;
+using UnityEngine.SocialPlatforms.Impl;
+using static CBS;
 
 public class CBS : MonoBehaviour
 {
@@ -20,17 +24,22 @@ public class CBS : MonoBehaviour
     public class Node
     {
         public Dictionary<int, List<Vector2Int>> Paths; // 各エージェントのパスを格納
-        public Dictionary<int , List<Conflict>> Conflicts; // ノード内のすべての衝突のリスト
+        public Dictionary<int , List<Conflict>> Constraints; // ノード内のすべての衝突のリスト
         public Node Parent; // 親ノードへの参照
         public int Score;
         // コンストラクタ。初期パスと親ノードを受け取る
-        public Node(Dictionary<int, List<Vector2Int>> paths, Dictionary<int, List<Conflict>> conflicts,int score ,Node parent = null)
+        public Node(Dictionary<int, List<Vector2Int>> paths, Dictionary<int, List<Conflict>> constraint, int score ,Node parent = null)
         {
             Paths = paths;
-            Conflicts = conflicts;
+            Constraints = constraint;
             Parent = parent;
             Score = score;
         }
+        public Node(Node node)
+        {
+            Paths = node.Paths; Constraints = node.Constraints; Parent = node; Score = node.Score;
+        }
+        public Node(){}
     }
 
     public class Conflict
@@ -65,120 +74,185 @@ public class CBS : MonoBehaviour
                 }
             }
     }
+
+    public Dictionary<int, List<Vector2Int>> GetSolutionPaths(int menber, Dictionary<int, List<Conflict>> constriants)
+    {
+        var Paths = new Dictionary<int, List<Vector2Int>>();
+        // 各エージェントの初期経路をA*で計算
+        for (int agent = 0; agent < menber; agent++)
+        {
+            Paths[agent] = AStarWithConstraint(Stage_Index, agent, constriants);
+            if (Paths[agent] == null)
+            {
+                Debug.LogWarning("エージェント:" + agent + "経路なし");
+                return null; 
+            }
+        }
+        return Paths;
+    }
+
+    public void Agents_Found(Node node, int menber)
+    {
+        AgentsNabi = new List<Vector2Int>[menber];
+        Nabicount = new int[menber];
+        // 衝突がない場合、解が見つかった
+        for (int agent = 0; agent < menber; agent++)
+        {
+            Nabicount[agent] = 0;
+            AgentsNabi[agent] = new List<Vector2Int>();
+            AgentsNabi[agent] = node.Paths[agent];
+            //Debug.Log("Agent:" + agent + "Count" + AgentsNabi[agent].Count);
+        }
+    }
+
+    public Dictionary<int, List<Conflict>> GetNewConstraint(Node currentNode, int agent,int time)
+    {
+        var NewConstraint = new Dictionary<int, List<Conflict>>(currentNode.Constraints);
+
+        Conflict newConflict = new Conflict(currentNode.Paths[agent][time], agent);
+
+        if (!currentNode.Constraints.ContainsKey(time))
+            NewConstraint.Add(time, new List<Conflict>());
+        else
+            NewConstraint[time] = new List<Conflict>(currentNode.Constraints[time]);
+
+        NewConstraint[time].Add(newConflict);
+        //Debug.Log(NewConstraint == currentNode.Constraints);
+        return new Dictionary<int, List<Conflict>>(NewConstraint);
+    }
+
+    public void Debug_Constraints(Dictionary<int, List<Conflict>> constraint)
+    {
+        List<int> keys = new List<int>(constraint.Keys);
+        int count = 0;
+        foreach (int key in keys)
+            count += constraint[key].Count;
+        Debug.Log("コンフリクト数："+ count);  
+        
+    }
+
+    List<int> CoustraintLog(List<Node> open)
+    {
+        List<int> list = new List<int>();
+        for(int i = 0; i <open.Count;i++)
+        {
+            int value = 0;
+            List<int> keys = new List<int>(open[i].Constraints.Keys);
+            foreach (int key in keys)
+                value += open[i].Constraints[key].Count;
+            list.Add(value);
+        }
+            return list;
+    }
+
+    bool SameCheck(List<int> a, List<int> b)
+    {
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (a[i] != b[i])return false;
+        }
+        return true;
+    }
+
+
+
     public void Agents_Saerch()
     {
         var openList = new List<Node>(); // オープンリスト。探索中のノードを管理
-        var initialPaths = new Dictionary<int, List<Vector2Int>>(); // 初期経路
         int AgentsMember = mapData.preset[Stage_Index].Agents.Length;
+        var initialPaths = GetSolutionPaths(AgentsMember, null); // 初期経路
+        if (initialPaths == null) return;//経路が存在できないなら返す
 
-        // 各エージェントの初期経路をA*で計算
-        for (int agent = 0; agent < AgentsMember; agent++)
-        {
-            initialPaths[agent] = AStar(Stage_Index, agent);
-            if (initialPaths[agent] == null)
-            {
-                Debug.LogWarning("エージェント:" + agent + "経路なし");
-                return;
-            }
-        }
-
-        var root = new Node(initialPaths, new Dictionary<int, List<Conflict>>(), GetScore(initialPaths , AgentsMember)); // 初期ノードを作成
-       
+        // 初期ノードを作成
+        var root = new Node(initialPaths, new Dictionary<int, List<Conflict>>(), GetScore(initialPaths , AgentsMember)); 
         openList.Add(root); // オープンリストに初期ノードを追加
 
+        //Debug//
         int c = 0;
-        int before1 = -1, before2= -1, beforeT = -1;
+        //int before1 = -1, before2= -1, beforeT = -1;
+        //Debug//
 
         // オープンリストが空になるまで探索を続ける
         while (openList.Count > 0)
         {
-            int nodeNum = GetNodeNum(openList);
-            var current = openList[nodeNum]; // 現在のノード
-            openList.RemoveAt(nodeNum); // オープンリストから削除
-            
-            var conflict = FindFirstConflict(current.Paths); // 衝突を検出
-            //Debug.Log(conflict);
-            if (conflict == null)
+            Node currentNode = GetNodeLowest(openList); // 現在のノード
+            //var conflict = FindFirstConflict(currentNode.Paths); // 衝突を検出までパス内を検索
+            var conflict = FindConflictList(currentNode.Paths);
+            if (conflict == null)// 衝突がない場合
             {
-                AgentsNabi = new List<Vector2Int>[AgentsMember];
-                Nabicount = new int[AgentsMember];
-                // 衝突がない場合、解が見つかった
-                for (int agent = 0; agent < AgentsMember; agent++)
-                {
-                    Nabicount[agent] = 0;
-                    AgentsNabi[agent] = new List<Vector2Int>();
-                    AgentsNabi[agent] = current.Paths[agent];
-                    Debug.Log("Agent:" + agent + "Count" + AgentsNabi[agent].Count);
-                }
-                return;
+                Agents_Found(currentNode, AgentsMember); return;
             }
-            else if (conflict == (-1,-1,-1))
+            else if(conflict == (null, -1))
+            //else if (conflict == (-1,-1,-1))// 探索できていない経路が取得された場合
                 continue;
-            
-            var (agent1, agent2, time) = conflict.Value;
-            bool SameBefore = !(agent1 == before1 && agent2 == before2 && time == beforeT);
+
+            //var (agent1, agent2, time) = conflict.Value;
+            var (menbersList, time) = conflict.Value;
+
+            //Debug//
+            //bool SameBefore = !(agent1 == before1 && agent2 == before2 && time == beforeT);
+            //List<int> Before = new List<int>();
+            //List<int> After = new List<int>();
+            //Debug//
+
             // 衝突を解決するために新しい制約を追加し、ノードを生成
             if (true)
-            {
-                var newConflict1 = new Dictionary<int, List<Conflict>>(current.Conflicts);
-
-                var newPaths1 = new Dictionary<int, List<Vector2Int>>(current.Paths);
-
-                var constraint1 = new Conflict(newPaths1[agent1][time], agent1);
+            {             
+                foreach (int agent in menbersList)
+                {
+                    Node newNode = new Node();
+                    newNode.Parent = currentNode;
+                    newNode.Constraints = new Dictionary<int, List<Conflict>>(GetNewConstraint(currentNode, agent, time));
+                    newNode.Paths = GetSolutionPaths(AgentsMember, newNode.Constraints);
+                    newNode.Score = GetScore(newNode.Paths, AgentsMember);
+                    openList.Add(newNode);
+                    //Debug_Constraints(newNode.Constraints);
+                    //Before = CoustraintLog(openList);
+                    //After = CoustraintLog(openList);
+                    //Debug.Log(SameCheck(Before, After));
+                }
+                /*
+                var newConstraint1 = new Dictionary<int, List<Conflict>>(currentNode.Constraints);
+                var newPaths1 = new Dictionary<int, List<Vector2Int>>(currentNode.Paths);
+                var newConflict1 = new Conflict(newPaths1[agent1][time], agent1);
                 //この場所にいなければいけない制約と、この場所にいてはいけない制約を両立する。
 
-
-
-                if (!newConflict1.ContainsKey(time))
-                    newConflict1.Add(time, new List<Conflict>());
-                newConflict1[time].Add(constraint1);
-
-                newPaths1[agent1] = AStarWithConstraint(Stage_Index, agent1, newConflict1);
-
-                var newNode1 = new Node(newPaths1, newConflict1, GetScore(newPaths1, AgentsMember), current);
+                if (!newConstraint1.ContainsKey(time))
+                    newConstraint1.Add(time, new List<Conflict>());
+                newConstraint1[time].Add(newConflict1);
+                newPaths1[agent1] = AStarWithConstraint(Stage_Index, agent1, newConstraint1);
+                Node newNode1 = new Node(newPaths1, newConstraint1, GetScore(newPaths1, AgentsMember), currentNode);
                 //ノードの生成する場所の長さが長い
-
                 //newNode1.Conflicts.AddRange(current.Conflicts);
                 //newNode1.Conflicts.Add((agent1, agent2, time));
-
                 openList.Add(newNode1);
-
-                var newConflict2 = new Dictionary<int, List<Conflict>>(current.Conflicts);
-
-                var newPaths2 = new Dictionary<int, List<Vector2Int>>(current.Paths);
-                var constraint2 = new Conflict(newPaths2[agent2][time], agent2);
-
-                if (!newConflict2.ContainsKey(time))
-                    newConflict2[time] = new List<Conflict>();
-                newConflict2[time].Add(constraint2);
-
-                newPaths2[agent2] = AStarWithConstraint(Stage_Index, agent2, newConflict2);
-
-                var newNode2 = new Node(newPaths2, newConflict2, GetScore(newPaths2, AgentsMember), current);
-                
-
+                var newConstraint2 = new Dictionary<int, List<Conflict>>(currentNode.Constraints);
+                var newPaths2 = new Dictionary<int, List<Vector2Int>>(currentNode.Paths);
+                var newConflict2 = new Conflict(newPaths2[agent2][time], agent2);
+                if (!newConstraint2.ContainsKey(time))
+                    newConstraint2[time] = new List<Conflict>();
+                newConstraint2[time].Add(newConflict2);
+                newPaths2[agent2] = AStarWithConstraint(Stage_Index, agent2, newConstraint2);
+                var newNode2 = new Node(newPaths2, newConstraint2, GetScore(newPaths2, AgentsMember), currentNode);               
                 //newNode2.Conflicts.AddRange(current.Conflicts);
                 //newNode2.Conflicts.Add((agent1, agent2, time));
-
                 openList.Add(newNode2);
+              */
             }
-
-            before1 = agent1; before2 = agent2; beforeT = time;
-
+            //before1 = agent1; before2 = agent2; beforeT = time;
             c++;
             if (c == 500)
             {
-                Debug.Log("うんこ");
+                Debug.Log("");
             }
             if (c == 1000)
             {
-                Debug.Log("探索失敗＼（＾o＾）／");
+                Debug.Log("探索失敗＼（＾o＾）／チョウカシティ");
                 return;
-            }
-                
+            }              
         }
         // 解が見つからなかった場合nullを返す
-        Debug.Log("探索失敗＼（＾o＾）／");
+        Debug.Log("探索失敗＼（＾o＾）／ カイナシティ");
         return;
     }
 
@@ -194,10 +268,15 @@ public class CBS : MonoBehaviour
         return Maxscore;
     }
 
-    private int GetNodeNum(List<Node> nodelist)
+    private Node GetNodeLowest(List<Node> nodelist)
     {
-        if (nodelist.Count == 1) return 0;
-
+        if (nodelist.Count == 1)
+        {
+            Node lastNode = new Node(nodelist[0]);
+            nodelist.RemoveAt(0);  // オープンリストから削除
+            return lastNode;
+        }
+      
         int Minscore = nodelist[0].Score;
         int number = 0;
         for (int i = 1; i < nodelist.Count; i++)
@@ -208,10 +287,80 @@ public class CBS : MonoBehaviour
                 number = i;
             }
         }
-        return number;
+
+        Node returnNode = new Node(nodelist[number]);
+        nodelist.RemoveAt(number);  // オープンリストから削除
+        return returnNode;
     }
 
+    private (List<int>, int)? FindConflictList(Dictionary<int, List<Vector2Int>> paths)
+    {
+        foreach (var agent1 in paths.Keys)
+        {
+            if (paths[agent1] == null)
+            {
 
+                return (null, -1);
+            }
+                
+        }
+        // エージェントの経路をチェックして最初の衝突を探す
+        foreach (var agent1 in paths.Keys)
+        {
+            for (int t = 0; t < paths[agent1].Count; t++)
+            {
+                foreach (var agent2 in paths.Keys)
+                {
+                    bool sameAgentsCheck = agent1 == agent2;
+                    if (sameAgentsCheck)
+                        continue;
+
+                    bool overTimeCheck = t < paths[agent2].Count;
+                    if (!overTimeCheck)
+                        continue;
+
+                    if (paths[agent1][t] == paths[agent2][t])
+                    {
+
+                        Debug.Log("agentA:" + agent1 + " agentB:" + agent2 + " Time:" + t +
+                            " PosX:" + paths[agent1][t].x + " PosY" + paths[agent1][t].y);
+
+                        // 衝突が見つかった場合、その情報を返す
+                        List<int> menberslist = new List<int>();
+                        Vector2Int Pos = paths[agent1][t];
+                        for (int i = 0; i < paths.Count; i++)
+                        {
+
+                            if (paths[i].Count <= t)
+                                continue;
+                            if (Pos == paths[i][t])
+                                menberslist.Add(i);
+                        }
+                        //return (menberslist, t);
+                        return (menberslist, t);
+                    }
+                    else if (t + 1 < paths[agent2].Count &&t + 1 < paths[agent1].Count)
+                    {
+                        int next = t + 1;
+                        if (paths[agent1][t] == paths[agent2][next] && paths[agent1][next] == paths[agent2][t])
+                        {
+                            Debug.Log("agentA:" + agent1 + " agentB:" + agent2 + " Time:" + next +
+                                " A_PosX:" + paths[agent1][next].x + " A_PosY" + paths[agent1][next].y +
+                                " B_PosX:" + paths[agent2][next].x + " B_PosY" + paths[agent2][next].y);
+
+                            List<int> menberslist = new List<int>();
+                            menberslist.Add(agent1);
+                            menberslist.Add(agent2);
+                            // 衝突が見つかった場合、その情報を返す
+                            return (menberslist, next);
+                        }
+                    }
+                }
+            }
+        }
+        // 衝突が見つからなかった場合nullを返す
+        return null;
+    }
     // エージェントの経路間で最初の衝突を見つける
     private (int, int, int)? FindFirstConflict(Dictionary<int, List<Vector2Int>> paths)
     {
@@ -240,6 +389,17 @@ public class CBS : MonoBehaviour
                         Debug.Log("agentA:" + agent1 + " agentB:" + agent2 + " Time:" + t + 
                             " PosX:" + paths[agent1][t].x + " PosY" + paths[agent1][t].y);
                         // 衝突が見つかった場合、その情報を返す
+                        List<int> menberslist = new List<int>();
+                        Vector2Int Pos = paths[agent1][t];
+                        for (int i = 0; i < paths.Count; i++)
+                        {
+
+                            if (paths[i].Count <= t)
+                                continue;
+                            if(Pos == paths[i][t])                         
+                                menberslist.Add(i);              
+                        }
+                        //return (menberslist, t);
                         return (agent1, agent2, t);
                     }
                     else if(t + 1 < paths[agent2].Count)
@@ -259,11 +419,6 @@ public class CBS : MonoBehaviour
         }
         // 衝突が見つからなかった場合nullを返す
         return null;
-    }
-
-    private List<Vector2Int> AStar(int index, int agent)
-    {
-        return Saerch(index, agent);
     }
 
     private List<Vector2Int> AStarWithConstraint(int index, int agent, Dictionary<int , List<Conflict>> conflicts)
@@ -313,46 +468,6 @@ public class CBS : MonoBehaviour
         if (X_dis < 0) X_dis *= -1;
         if (Y_dis < 0) Y_dis *= -1;
         return GetDistanceCost(X_dis, Y_dis);
-    }
-    private List<Vector2Int> Saerch(int stege, int menber)
-    {
-        Vector2Int GoalPos = mapData.GetGoalPos(stege, menber);
-        Info StartInfo = new Info(null, mapData.GetStartPos(stege, menber), 0, GoalPos);
-        List<Info> OpenList = new List<Info>();
-        List<Info> CloseList = new List<Info>();
-        OpenList.Add(StartInfo);
-        while (OpenList.Count > 0)
-        {
-            Info useInfo = OpenList[0];
-
-            for (int i = 0; i < OpenList.Count; i++)
-            {
-                if (OpenList[i].Score < useInfo.Score ||
-                    (OpenList[i].Score == useInfo.Score &&
-                    OpenList[i].TotalMoveCost < useInfo.TotalMoveCost))
-                {
-                    useInfo = OpenList[i];
-                }
-            }
-            OpenList.Remove(useInfo);
-            CloseList.Add(useInfo);
-
-            if (useInfo.Pos == GoalPos)
-            {
-                List<Info> Nabigate;
-                Nabigate = RetracePath(StartInfo, useInfo);
-                List <Vector2Int> Pos = new List<Vector2Int>();
-                while (Nabigate.Count > 0)
-                {                  
-                    Pos.Add(Nabigate[0].Pos);
-                    Nabigate.Remove(Nabigate[0]);
-                }
-                return Pos;
-            }
-
-            PosSearch(useInfo, stege, OpenList, CloseList, GoalPos);
-        }
-        return new List<Vector2Int>();
     }
 
     enum CloseSaerch
@@ -439,62 +554,6 @@ public class CBS : MonoBehaviour
         return path;
     }
 
-    private void PosSearch(Info info, int stege, List<Info> openList, List<Info> closeList, Vector2Int goalPos)
-    {
-        for (int X = -1; X <= 1; X++)
-            for (int Y = -1; Y <= 1; Y++)
-            {
-                if (X == 0 && Y == 0)
-                    continue;
-
-                //斜め除外
-                if (X + Y != 1 && X + Y != -1)
-                    continue;
-
-                Vector2Int checkPos = new Vector2Int(info.Pos.x + X, info.Pos.y + Y);
-
-                bool OverCheck_x = (checkPos.x >= 0 && checkPos.x < BOARD_WIDTH);
-                bool OverCheck_y = (checkPos.y >= 0 && checkPos.y < BOARD_HEIGHT);
-
-                if (OverCheck_x && OverCheck_y)
-                {
-                    Map_Object movePos = mapData.GetMapData(stege, checkPos.y, checkPos.x);
-
-                    //壁除外
-                    if (movePos == Map_Object.Wall)
-                        continue;
-                    //他エージェント除外
-                    //if (movePos == Map_Object.Agent)
-                    //   continue;
-
-                    int totalMoveCost = info.TotalMoveCost + 1;
-                   
-                    // 既に調査済みである
-                    if (info.GetSameInfo(closeList, checkPos, out var close) == true)
-                    {
-                        // トータル移動コストが既存以上なら差し替え不要
-                        if (totalMoveCost >= close.TotalMoveCost)
-                            continue;
-
-                        closeList.Remove(close);
-                    }
-
-                    // 現在調査中である
-                    if (info.GetSameInfo(openList, checkPos, out var open) == true)
-                    {
-                        // トータル移動コストが既存以上なら差し替え不要
-                        if (totalMoveCost >= open.TotalMoveCost)
-                            continue;
-
-                        openList.Remove(open);
-                    }
-
-                    Info neighborInfo = new Info(info, checkPos, totalMoveCost, goalPos);
-                    openList.Add(neighborInfo);
-                }
-            }
-    }
-
     private bool ConstraintCheck(int nowagent,Vector2Int checkPos, List<Conflict> constraint)
     {
         for(int i = 0; i < constraint.Count; i++)   
@@ -519,113 +578,113 @@ public class CBS : MonoBehaviour
 
                 Vector2Int checkPos = new Vector2Int(info.Pos.x + X, info.Pos.y + Y);
 
+                //場外除外
                 bool OverCheck_x = (checkPos.x >= 0 && checkPos.x < BOARD_WIDTH);
                 bool OverCheck_y = (checkPos.y >= 0 && checkPos.y < BOARD_HEIGHT);
+                if (!(OverCheck_x && OverCheck_y))
+                    continue;
 
-                if (OverCheck_x && OverCheck_y)
-                {
-                    Map_Object movePos = mapData.GetMapData(stege, checkPos.y, checkPos.x);
+                //壁除外
+                Map_Object movePos = mapData.GetMapData(stege, checkPos.y, checkPos.x);
+                if (movePos == Map_Object.Wall)
+                    continue;
 
-                    //壁除外
-                    if (movePos == Map_Object.Wall)
-                        continue;
-                    //他エージェント除外
-                    //if (movePos == Map_Object.Agent)
-                    //   continue;
+                //他エージェント除外
+                //if (movePos == Map_Object.Agent)
+                //   continue;
 
-                    int totalMoveCost = info.TotalMoveCost + 1;
+                int totalMoveCost = info.TotalMoveCost + 1;
 
-                    if (conflicts.ContainsKey(totalMoveCost) == true)
-                        if (ConstraintCheck(menber, checkPos, conflicts[totalMoveCost]))
+                if (conflicts != null && conflicts.ContainsKey(totalMoveCost) == true)
+                    if (ConstraintCheck(menber, checkPos, conflicts[totalMoveCost]))
+                    {
+                        Info stayInfo = new Info(info, info.Pos, totalMoveCost, goalPos);
+
+                        if (ConstraintCheck(menber, info.Pos, conflicts[totalMoveCost]) == false)
                         {
-                            Info stayInfo = new Info(info, info.Pos, totalMoveCost, goalPos);
-
-                            if (ConstraintCheck(menber, info.Pos, conflicts[totalMoveCost]) == false)                                
-                            {
-                                openList.Add(stayInfo);
-                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
-                            }
-                            else
-                            {
-                                Info returnInfo = new Info(info, info.Parent.Pos, totalMoveCost, goalPos);
-                                Info ParentInfo = returnInfo;
-                                
-                                while (returnInfo.Pos == info.Pos)
-                                {
-                                    ParentInfo = ParentInfo.Parent;
-                                    if (ParentInfo == null)
-                                    {
-                                        break;
-                                    }
-                                    returnInfo = new Info(info, ParentInfo.Pos, totalMoveCost, goalPos);
-                                }
-
-                                if (ParentInfo == null)
-                                    continue;
-
-                                openList.Add(returnInfo);
-
-                                closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
-                                closeList[returnInfo.Pos.x + returnInfo.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
-                            }
-                            /*
-                            int[] Move_X = { 0, -1, 1, 0 };
-                            int[] Move_Y = { 1, 0, 0, -1 };
-                            for (int i = 0; i < 4;i++)
-                            {
-                                Vector2Int movingPos = new Vector2Int(info.Pos.x + Move_X[i], info.Pos.y + Move_Y[i]);
-
-                                OverCheck_x = (movingPos.x >= 0 && movingPos.x < BOARD_WIDTH);
-                                OverCheck_y = (movingPos.y >= 0 && movingPos.y < BOARD_HEIGHT);
-                                if (!OverCheck_x || !OverCheck_y)
-                                    continue;
-
-                                Map_Object movingObj = mapData.GetMapData(stege, movingPos.y, movingPos.x);
-                                //壁除外
-                                if (movingObj == Map_Object.Wall)
-                                    continue;
-                                   
-                                
-                            }*/
-                            continue;
+                            openList.Add(stayInfo);
+                            closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
                         }
-
-                    // 既に調査済みである
-                    if (closeList[checkPos.x + checkPos.y * BOARD_HEIGHT] == CloseSaerch.Visited)
-                    {
-                        //if (totalMoveCost >= closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost)
-                        continue;
-                        //closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Saerch = false;
-                        //closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost = 10000;
-                    }
-
-                    /*
-                    if (info.GetSameInfo(closeList, checkPos, out var close) == true)
-                    {
-                        // トータル移動コストが既存以上なら差し替え不要
-                        if (totalMoveCost >= close.TotalMoveCost)
-                            continue;
-
-                        closeList.Remove(close);
-                    }
-                    */
-
-                    // 現在調査中である
-                    if (info.GetSameInfo(openList, checkPos, out var open) == true)
-                    {
-                        if(closeList[checkPos.x + checkPos.y * BOARD_HEIGHT] != CloseSaerch.ReEntry)
+                        else
                         {
-                            // トータル移動コストが既存以上なら差し替え不要
-                            if (totalMoveCost >= open.TotalMoveCost)
+                            Info returnInfo = new Info(info, info.Parent.Pos, totalMoveCost, goalPos);
+                            Info ParentInfo = returnInfo;
+
+                            while (returnInfo.Pos == info.Pos)
+                            {
+                                ParentInfo = ParentInfo.Parent;
+                                if (ParentInfo == null)
+                                {
+                                    break;
+                                }
+                                returnInfo = new Info(info, ParentInfo.Pos, totalMoveCost, goalPos);
+                            }
+
+                            if (ParentInfo == null)
                                 continue;
 
-                            openList.Remove(open);
-                        }     
+                            openList.Add(returnInfo);
+
+                            closeList[info.Pos.x + info.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
+                            closeList[returnInfo.Pos.x + returnInfo.Pos.y * BOARD_HEIGHT] = CloseSaerch.ReEntry;
+                        }
+                        /*
+                        int[] Move_X = { 0, -1, 1, 0 };
+                        int[] Move_Y = { 1, 0, 0, -1 };
+                        for (int i = 0; i < 4;i++)
+                        {
+                            Vector2Int movingPos = new Vector2Int(info.Pos.x + Move_X[i], info.Pos.y + Move_Y[i]);
+
+                            OverCheck_x = (movingPos.x >= 0 && movingPos.x < BOARD_WIDTH);
+                            OverCheck_y = (movingPos.y >= 0 && movingPos.y < BOARD_HEIGHT);
+                            if (!OverCheck_x || !OverCheck_y)
+                                continue;
+
+                            Map_Object movingObj = mapData.GetMapData(stege, movingPos.y, movingPos.x);
+                            //壁除外
+                            if (movingObj == Map_Object.Wall)
+                                continue;
+
+                        }*/
+                        continue;
                     }
- 
-                    Info neighborInfo = new Info(info, checkPos, totalMoveCost, goalPos);
-                    openList.Add(neighborInfo);
+
+                // 既に調査済みである
+                if (closeList[checkPos.x + checkPos.y * BOARD_HEIGHT] == CloseSaerch.Visited)
+                {
+                    //if (totalMoveCost >= closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost)
+                    continue;
+                    //closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Saerch = false;
+                    //closeList[checkPos.x + checkPos.y * BOARD_HEIGHT].Cost = 10000;
                 }
+
+                /*
+                if (info.GetSameInfo(closeList, checkPos, out var close) == true)
+                {
+                    // トータル移動コストが既存以上なら差し替え不要
+                    if (totalMoveCost >= close.TotalMoveCost)
+                        continue;
+
+                    closeList.Remove(close);
+                }
+                */
+
+                // 現在調査中である
+                if (info.GetSameInfo(openList, checkPos, out var open) == true)
+                {
+                    if (closeList[checkPos.x + checkPos.y * BOARD_HEIGHT] != CloseSaerch.ReEntry)
+                    {
+                        // トータル移動コストが既存以上なら差し替え不要
+                        if (totalMoveCost >= open.TotalMoveCost)
+                            continue;
+
+                        openList.Remove(open);
+                    }
+                }
+
+                Info neighborInfo = new Info(info, checkPos, totalMoveCost, goalPos);
+                openList.Add(neighborInfo);
+
             }
     }
 }
