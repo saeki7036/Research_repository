@@ -469,14 +469,12 @@ public class CBS : MonoBehaviour
         if (Y_dis < 0) Y_dis *= -1;
         return GetDistanceCost(X_dis, Y_dis);
     }
-
     enum CloseSaerch
     {
         Unconfirmed,
         ReEntry,
         Visited,
     }
-
 
     private List<Vector2Int> SaerchWithConstraint(int stege, int menber, Dictionary<int, List<Conflict>> conflicts)
     {

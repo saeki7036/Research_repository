@@ -22,7 +22,7 @@ public class MapEditer : EditorWindow
     private GUISkin _skin;
     private void OnEnable()
     {
-        var defaultData  = AssetDatabase.LoadAssetAtPath<MapDataBase>("Assets/Kenkyu/KeiroTansaku/ClassData/MapDataBase.asset");
+        var defaultData  = AssetDatabase.LoadAssetAtPath<MapDataBase>("Assets/Kenkyu/KeiroTansaku/mapf/ClassData/MapDataBase.asset");
         //var defaultData = Resources.Load<MapDataBase>("MapDataBase");
         this.BaseData = defaultData.Clone();
         this.BaseDataPath = AssetDatabase.GetAssetPath(defaultData);
@@ -102,7 +102,7 @@ public class MapEditer : EditorWindow
                
                 GUILayout.FlexibleSpace();
                 EditorGUILayout.LabelField("|Floor:", GUILayout.MaxWidth(40f));
-                if (GUILayout.Button("  ƒ}ƒbƒv‚ð’Ç‰Á", GUILayout.MaxWidth(120f), GUILayout.MaxHeight(20f)))
+                if (GUILayout.Button("  ï¿½}ï¿½bï¿½vï¿½ï¿½Ç‰ï¿½", GUILayout.MaxWidth(120f), GUILayout.MaxHeight(20f)))
                 {
                     Undo.RecordObject(BaseData, "Add Map");
                     int Map_Length = this.BaseData.preset.Length;
@@ -125,7 +125,7 @@ public class MapEditer : EditorWindow
                     //SetData(Map_Length);
                 }
                 
-                if (GUILayout.Button("Agent‚ð’Ç‰Á", GUILayout.MaxWidth(120f), GUILayout.MaxHeight(20f)))
+                if (GUILayout.Button("Agentï¿½ï¿½Ç‰ï¿½", GUILayout.MaxWidth(120f), GUILayout.MaxHeight(20f)))
                 {
                     Undo.RecordObject(BaseData, "Add Agent");
                     int Point_Length = this.BaseData.preset[Slider_Value_Map].Agents.Length;
@@ -137,13 +137,13 @@ public class MapEditer : EditorWindow
                         MyColor = new Color(0,0,0,1f),
                     };
                 }
-                if (GUILayout.Button("Œ³‚É–ß‚·", GUILayout.MaxWidth(60f), GUILayout.MaxHeight(20f)))
+                if (GUILayout.Button("ï¿½ï¿½ï¿½É–ß‚ï¿½", GUILayout.MaxWidth(60f), GUILayout.MaxHeight(20f)))
                 {
                     this.BaseData = AssetDatabase.LoadAssetAtPath<MapDataBase>(this.BaseDataPath).Clone();
                     EditorGUIUtility.editingTextField = false;
                 }
 
-                if (GUILayout.Button("•Û‘¶", GUILayout.MaxWidth(60f), GUILayout.MaxHeight(20f)))
+                if (GUILayout.Button("ï¿½Û‘ï¿½", GUILayout.MaxWidth(60f), GUILayout.MaxHeight(20f)))
                 {
                     bool Chack = true;
                     for(int i = 0; i < this.BaseData.preset[Slider_Value_Map].Agents.Length; i++)
@@ -229,7 +229,7 @@ public class MapEditer : EditorWindow
             {
                 using (new EditorGUILayout.VerticalScope(GUILayout.MaxWidth(300f)))
                 {
-                    EditorGUILayout.LabelField("    ”ÍˆÍÝ’u", GUILayout.MinWidth(180f));
+                    EditorGUILayout.LabelField("    ï¿½ÍˆÍÝ’u", GUILayout.MinWidth(180f));
                     using (new EditorGUILayout.HorizontalScope())
                     {
                         using (new EditorGUILayout.VerticalScope())
@@ -244,7 +244,7 @@ public class MapEditer : EditorWindow
                                 GUI.backgroundColor = Color.white;
                             }
 
-                            if (GUILayout.Button("Ý’u", GUILayout.MaxWidth(40f)))
+                            if (GUILayout.Button("ï¿½Ý’u", GUILayout.MaxWidth(40f)))
                             {
                                 Undo.RecordObject(BaseData, "SET");
                                 //int FloorPoint = i;
@@ -256,8 +256,8 @@ public class MapEditer : EditorWindow
 
                         using (new EditorGUILayout.VerticalScope())
                         {
-                            EditorGUILayout.LabelField("¶‰º", GUILayout.MaxWidth(30f));
-                            EditorGUILayout.LabelField("‰Eã", GUILayout.MaxWidth(30f));
+                            EditorGUILayout.LabelField("ï¿½ï¿½ï¿½ï¿½", GUILayout.MaxWidth(30f));
+                            EditorGUILayout.LabelField("ï¿½Eï¿½ï¿½", GUILayout.MaxWidth(30f));
                         }
 
                         using (new EditorGUILayout.VerticalScope())
@@ -269,7 +269,7 @@ public class MapEditer : EditorWindow
 
                     if (0 < this.BaseData.preset.Length && 0 < this.BaseData.preset[Slider_Value_Map].Agents.Length)
                     {
-                        EditorGUILayout.LabelField("ƒG[ƒWƒFƒ“ƒg•ƒS[ƒ‹", GUILayout.MinWidth(180f));
+                        EditorGUILayout.LabelField("ï¿½Gï¿½[ï¿½Wï¿½Fï¿½ï¿½ï¿½gï¿½ï¿½ï¿½Sï¿½[ï¿½ï¿½", GUILayout.MinWidth(180f));
                         using (var scroll = new EditorGUILayout.ScrollViewScope(scrollPosition, GUILayout.MinWidth(180f)))
                         {
                             scrollPosition = scroll.scrollPosition;                    
@@ -286,8 +286,8 @@ public class MapEditer : EditorWindow
 
                                     using (new EditorGUILayout.VerticalScope())
                                     {
-                                        EditorGUILayout.LabelField("ƒXƒ^[ƒg", GUILayout.MaxWidth(40f));
-                                        EditorGUILayout.LabelField(" ƒS[ƒ‹ ", GUILayout.MaxWidth(40f));
+                                        EditorGUILayout.LabelField("ï¿½Xï¿½^ï¿½[ï¿½g", GUILayout.MaxWidth(40f));
+                                        EditorGUILayout.LabelField(" ï¿½Sï¿½[ï¿½ï¿½ ", GUILayout.MaxWidth(40f));
                                         EditorGUILayout.LabelField(" Color  ", GUILayout.MaxWidth(40f));
                                         EditorGUILayout.LabelField("obj_S", GUILayout.MaxWidth(40f));
                                         EditorGUILayout.LabelField("obj_G", GUILayout.MaxWidth(40f));
@@ -352,7 +352,7 @@ public class MapEditer : EditorWindow
             var rect = new Rect(Vector2.zero, this.position.size);
             var bgColor = Color.white * new Color(1f, 1f, 1f, 0.2f);
             EditorGUI.DrawRect(rect, bgColor);
-            EditorGUI.LabelField(rect, "‚±‚±‚ÉƒAƒCƒeƒ€ƒf[ƒ^‚ðƒhƒ‰ƒbƒO•ƒhƒƒbƒv‚µ‚Ä‚­‚¾‚³‚¢", this._skin.GetStyle("D&D"));
+            EditorGUI.LabelField(rect, "ï¿½ï¿½ï¿½ï¿½ï¿½ÉƒAï¿½Cï¿½eï¿½ï¿½ï¿½fï¿½[ï¿½^ï¿½ï¿½ï¿½hï¿½ï¿½ï¿½bï¿½Oï¿½ï¿½ï¿½hï¿½ï¿½ï¿½bï¿½vï¿½ï¿½ï¿½Ä‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½", this._skin.GetStyle("D&D"));
         }
     }
     public void AddItemsToMenu(GenericMenu menu)
